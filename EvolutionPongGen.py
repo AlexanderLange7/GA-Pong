@@ -7,6 +7,8 @@ June 4, 2020 - June 9, 2020
 import pygame
 from datetime import datetime
 import os
+import numpy as np
+import pandas as pd
 '''Global Variables'''
 Black = (0,0,0)
 White = (255,255,255)
@@ -33,8 +35,9 @@ done = False
 clock = pygame.time.Clock()
 #file for data collection
 file_object = 0
-
-
+#y values for the AI players
+y1command=0
+y2command=0
 
 
 '''Definitions for objects in the Game'''
@@ -62,24 +65,6 @@ def Score2(score2):
 
 
 
-'''Definitions for Data Collection for the neural network
-and building the file that stores them.
-Place collect data right after stats for nerds,
-and file builder at beginning of the game.
-'''
-def collectData(ballx,bally,y1,y2,score1,score2,bouncenum):
-    global file_object
-    file_object.write(str(ballx)+", "+str(bally)+", "+str(y1)+", "+str(y2)+", "+ str(bouncenum)+", "+str(score1)+", "+str(score2)+"\n")
-def buildfile():
-#Textfile Builder
-    global file_object
-    now = datetime.now()
-    timestamp = datetime.timestamp(now)
-    save_path = r'C:\Users\Computer\Desktop\Monday diy\data'
-    name_of_file = str(timestamp) + ".txt"
-    completefile = os.path.join(save_path,name_of_file)
-    file_object = open(completefile, "w+")
-
 
 ''' GENETIC ALGORITHM AND STEPS:
 Our genetic algorithm will be a little different than most.
@@ -91,11 +76,46 @@ one unsupervised network will be player b.
 If either one reaches a score of 10,
 the other network will become a copy of the winner,
 and they will continue to play as a new "generation"
-''' 
+'''
+from sklearn.tree import DecisionTreeClassifier
 
+infile = pd.read_csv("testdata.csv")
+feature_names = ['ballx', 'bally', 'y2', 'bouncenum','score1','score2']
+x = infile[feature_names]
+y = infile['y1']
+
+feature_namesn2 = ['ballx', 'bally', 'y1', 'bouncenum','score1','score2']
+xn2 = infile[feature_namesn2]
+yn2 = infile['y2']
+
+
+#Import Train Test Split
+from sklearn.model_selection import train_test_split
+x_train,x_test,y_train,y_test = train_test_split(x,y,random_state=0)
+x2_train,x2_test,y2_train,y2_test = train_test_split(xn2,yn2,random_state=0)
+#Preprocess the data by scaling
+from sklearn.preprocessing import MinMaxScaler
+scaler = MinMaxScaler()
+
+x_train = scaler.fit_transform(x_train)
+x_test = scaler.transform(x_test)
+clf = DecisionTreeClassifier().fit(x_train, y_train)
+
+x2_train = scaler.fit_transform(x2_train)
+x2_test = scaler.transform(x2_test)
+clf2 = DecisionTreeClassifier().fit(x2_train, y2_train)
+
+
+#Make a method that gets the current game stats and decides what to do with y1
+def getNNmovement1(ballx,bally,y1,y2,score1,score2,bouncenum):
+    global y1command
+    global y2command
+    finalinputs = np.reshape([ballx, bally, y2, bouncenum, score1, score2],(1,-1))
+    y1command = clf.predict(finalinputs)
+    finalinputs = np.reshape([ballx, bally, y1, bouncenum, score1, score2],(1,-1))
+    y2command = clf2.predict(finalinputs)
+    print(str(y1command[0])+"   "+str(y2command[0]))
     
-
-buildfile()
 #Internal Game Variables
 #Player 1 and Paddle Size
 x1 = 5
@@ -121,44 +141,32 @@ bouncenum = 0
 cumulative = 0
 abpp = 0.0
 
-'''PRIOR TO STARTING THE GAME, WRITE THE FEATURES INTO THE GLOBAL FILE'''
-file_object.write("ballx,bally,y1,y2,bouncenum,score1,score2\n")
 #While the Script isn't over
+getNNmovement1(ballx,bally,y1,y2,score1,score2,bouncenum)
 while not done:
     
+    #Player1 locations
+    if y1command < y1:
+        speed1 = -10
+        print("P1 going up")
+    if y1command > y1:
+        speed1 = 10
+        print("P1 going down")
+            #Player2 Location    
+    if y2command < y2:
+        speed2 = -10
+        print("P2 going up")
+    if y2command > y2:
+        speed2 = 10
+        print("P2 going down")
     
+    if y2command== y2:
+        speed=0
+        print("HALT P2")
+    if y1command ==y1:
+        speed=0
+        print("HALT P1")
 
-    #Grab the Keystrokes
-    for event in pygame.event.get():
-        #If Pygame Quits
-        if event.type == pygame.QUIT:
-            #End the loop
-            done = True
-        #If a Key is being Held Down 
-        if event.type == pygame.KEYDOWN:
-            #Set Player1 Location
-            if event.key == pygame.K_w:
-                speed1 = -10
-                collectData(ballx,bally,y1,y2,score1,score2,bouncenum)
-            if event.key == pygame.K_s:
-                speed1 = 10
-                collectData(ballx,bally,y1,y2,score1,score2,bouncenum)
-            #Set Player2 Location    
-            if event.key == pygame.K_UP:
-                speed2 = -10
-                collectData(ballx,bally,y1,y2,score1,score2,bouncenum)
-            if event.key == pygame.K_DOWN:
-                speed2 = 10
-                collectData(ballx,bally,y1,y2,score1,score2,bouncenum)        
-        if event.type == pygame.KEYUP:
-            if event.key == pygame.K_w:
-                speed1 = 0
-            if event.key == pygame.K_s:
-                speed1 = 0
-            if event.key == pygame.K_UP:
-                speed2 = 0
-            if event.key == pygame.K_DOWN:
-                speed2 = 0
     #Fill the screen
     screen.fill(Black)
     #Draw lines for where the ball scores.
@@ -199,11 +207,9 @@ while not done:
         bouncenum = bouncenum+1
         if speedx>0 and speedx<20:
             speedx = speedx+1
-        if speedx ==20:
-            if speedy > 0:
-                speedy = speedy+1
-            else:
-                speedy = speedy-1
+        else:
+            speedx = speedx-1
+
     if ballx-20 < x1+35 and bally-20 > y1 and bally+20 < y1+ysize and ballx > x1+38:
         #flip ball direction
         speedx = -speedx
@@ -211,11 +217,9 @@ while not done:
         bouncenum=bouncenum+1
         if speedx>0 and speedx<20:
             speedx = speedx+1
-        if speedx ==20:
-            if speedy > 0:
-                speedy = speedy+1
-            else:
-                speedy = speedy-1
+        else:
+            speedx = speedx-1
+
     if bally > 477 or bally < 23:
         speedy = -speedy
 
@@ -225,7 +229,6 @@ while not done:
         bally = 250
         #reset speed
         speedx = 4
-        speedy = 3
         #reset bouncebacks and calculate current stats
         cumulative+=bouncenum
         bouncenum = 0
@@ -237,7 +240,6 @@ while not done:
         bally = 250
         #reset speed
         speedx = 4
-        speedy = 3
         #reset bouncebacks and calculate current stats
         cumulative+=bouncenum
         bouncenum = 0
@@ -287,14 +289,12 @@ while not done:
     End Stats for Nerds
     '''
     
-    
-    collectData(ballx,bally,y1,y2,score1,score2,bouncenum)
     screen.blit(p1win,[150,250])
     screen.blit(p2win,[150,250])
     Score1(score1)
     Score2(score2)
     
-    
+    getNNmovement1(ballx,bally,y1,y2,score1,score2,bouncenum)
     
     '''Record Information for the GA'''
     '''Check Fitness in the winner text'''
